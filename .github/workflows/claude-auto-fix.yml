@@ -1,0 +1,67 @@
+name: Claude Code Auto-Fix
+
+on:
+  workflow_call:
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  auto-fix:
+    name: Diagnose & Fix CI Failure
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'failure'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+
+      - name: Download failure logs
+        uses: actions/github-script@v7
+        id: logs
+        with:
+          script: |
+            const run = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id,
+            });
+            const failedJobs = run.data.jobs.filter(j => j.conclusion === 'failure');
+            let logs = '';
+            for (const job of failedJobs) {
+              const log = await github.rest.actions.downloadJobLogsForWorkflowRun({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                job_id: job.id,
+              });
+              logs += `\n--- ${job.name} ---\n${log.data}\n`;
+            }
+            const fs = require('fs');
+            fs.writeFileSync('failure-logs.txt', logs.slice(0, 50000));
+
+      - name: Claude Code fix
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            CI failed on this branch. The failure logs are in failure-logs.txt.
+
+            1. Read the failure logs
+            2. Identify the root cause
+            3. Make the minimal fix needed
+            4. Verify the fix by running the relevant check locally
+            5. Commit the fix with a conventional commit message (fix: ...)
+
+            Do NOT:
+            - Suppress errors with @ts-ignore or type: any
+            - Delete failing tests
+            - Make changes unrelated to the failure
+
+          max_turns: 5
+          timeout_minutes: 10

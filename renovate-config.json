@@ -1,0 +1,86 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    ":separateMajorReleases",
+    ":combinePatchMinorReleases"
+  ],
+  "labels": ["dependencies"],
+  "rangeStrategy": "pin",
+  "timezone": "America/Los_Angeles",
+  "schedule": ["before 9am on Monday"],
+  "prHourlyLimit": 5,
+  "prConcurrentLimit": 10,
+  "packageRules": [
+    {
+      "description": "React / Next.js core",
+      "matchPackageNames": ["next", "react", "react-dom", "@types/react", "@types/react-dom"],
+      "groupName": "React / Next.js",
+      "automerge": false
+    },
+    {
+      "description": "Type-safe stack — automerge patches and minors",
+      "matchPackageNames": ["zod", "drizzle-orm", "drizzle-kit", "@trpc/server", "@trpc/client", "@trpc/react-query", "@trpc/next"],
+      "groupName": "Type-safe stack",
+      "automerge": true,
+      "matchUpdateTypes": ["patch", "minor"]
+    },
+    {
+      "description": "Supabase — manual review",
+      "matchPackagePatterns": ["^@supabase/", "^supabase$"],
+      "groupName": "Supabase",
+      "automerge": false
+    },
+    {
+      "description": "Anthropic / AI SDKs",
+      "matchPackagePatterns": ["^@anthropic-ai/", "^ai$", "^@ai-sdk/"],
+      "groupName": "AI SDKs",
+      "automerge": true,
+      "matchUpdateTypes": ["patch", "minor"]
+    },
+    {
+      "description": "Tailwind + UI",
+      "matchPackagePatterns": ["^tailwindcss", "^@radix-ui/", "^class-variance-authority", "^clsx", "^tailwind-merge"],
+      "groupName": "Styling / UI",
+      "automerge": true,
+      "matchUpdateTypes": ["patch", "minor"]
+    },
+    {
+      "description": "Testing",
+      "matchPackageNames": ["vitest", "@testing-library/react", "@testing-library/jest-dom", "playwright", "pytest"],
+      "groupName": "Testing",
+      "automerge": true
+    },
+    {
+      "description": "Linting",
+      "matchPackageNames": ["@biomejs/biome", "ruff"],
+      "groupName": "Linting",
+      "automerge": true
+    },
+    {
+      "description": "TypeScript",
+      "matchPackageNames": ["typescript"],
+      "automerge": true,
+      "matchUpdateTypes": ["patch", "minor"]
+    },
+    {
+      "description": "GitHub Actions — pin to SHA, automerge minors",
+      "matchManagers": ["github-actions"],
+      "automerge": true,
+      "matchUpdateTypes": ["patch", "minor"]
+    },
+    {
+      "description": "Python dependencies",
+      "matchManagers": ["pip_requirements", "pip-compile", "pyproject.toml"],
+      "groupName": "Python dependencies",
+      "automerge": true,
+      "matchUpdateTypes": ["patch", "minor"]
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "automerge": true,
+    "labels": ["security"]
+  }
+}

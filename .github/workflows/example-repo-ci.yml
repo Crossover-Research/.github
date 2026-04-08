@@ -1,0 +1,28 @@
+# ============================================================
+# EXAMPLE: Copy this into any repo as .github/workflows/ci.yml
+# Delete this file from the .github org repo after reference
+# ============================================================
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typescript:
+    uses: Crossover-Research/.github/.github/workflows/ts-ci.yml@main
+
+  python:
+    uses: Crossover-Research/.github/.github/workflows/python-ci.yml@main
+
+  security:
+    uses: Crossover-Research/.github/.github/workflows/security.yml@main
+
+  auto-fix:
+    needs: [typescript, python]
+    if: failure()
+    uses: Crossover-Research/.github/.github/workflows/claude-auto-fix.yml@main
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
