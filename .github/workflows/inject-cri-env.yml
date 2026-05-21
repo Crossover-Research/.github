@@ -62,7 +62,7 @@ jobs:
           PROJECT_ID: ${{ steps.resolve.outputs.project_id }}
           CRI_SUPABASE_URL: ${{ secrets.CRI_SUPABASE_URL }}
         run: |
-          HTTP_STATUS=$(curl -s -o /tmp/cri_url_resp.json -w "%{http_code}" -X POST \
+          HTTP_STATUS=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X POST \
             "https://api.vercel.com/v10/projects/$PROJECT_ID/env?teamId=$VERCEL_TEAM_ID" \
             -H "Authorization: Bearer $VERCEL_TOKEN" \
             -H "Content-Type: application/json" \
@@ -72,14 +72,14 @@ jobs:
               \"type\": \"encrypted\",
               \"target\": [\"production\", \"preview\", \"development\"]
             }")
-          BODY=$(cat /tmp/cri_url_resp.json)
-          echo "HTTP $HTTP_STATUS: $BODY"
+          BODY=$(cat /tmp/resp.json)
+          echo "HTTP $HTTP_STATUS"
           if [[ "$HTTP_STATUS" == "200" || "$HTTP_STATUS" == "201" ]]; then
             echo "CRI_SUPABASE_URL: created"
-          elif [[ "$HTTP_STATUS" == "409" ]] || echo "$BODY" | grep -q "ENV_ALREADY_EXISTS"; then
+          elif echo "$BODY" | grep -qE "ENV_ALREADY_EXISTS|ENV_CONFLICT"; then
             echo "CRI_SUPABASE_URL: already exists (skipping)"
           else
-            echo "CRI_SUPABASE_URL: unexpected response"
+            echo "CRI_SUPABASE_URL unexpected response: $BODY"
             exit 1
           fi
 
@@ -90,7 +90,7 @@ jobs:
           PROJECT_ID: ${{ steps.resolve.outputs.project_id }}
           CRI_SUPABASE_ANON_KEY: ${{ secrets.CRI_SUPABASE_ANON_KEY }}
         run: |
-          HTTP_STATUS=$(curl -s -o /tmp/cri_key_resp.json -w "%{http_code}" -X POST \
+          HTTP_STATUS=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X POST \
             "https://api.vercel.com/v10/projects/$PROJECT_ID/env?teamId=$VERCEL_TEAM_ID" \
             -H "Authorization: Bearer $VERCEL_TOKEN" \
             -H "Content-Type: application/json" \
@@ -100,14 +100,14 @@ jobs:
               \"type\": \"encrypted\",
               \"target\": [\"production\", \"preview\", \"development\"]
             }")
-          BODY=$(cat /tmp/cri_key_resp.json)
-          echo "HTTP $HTTP_STATUS: $BODY"
+          BODY=$(cat /tmp/resp.json)
+          echo "HTTP $HTTP_STATUS"
           if [[ "$HTTP_STATUS" == "200" || "$HTTP_STATUS" == "201" ]]; then
             echo "CRI_SUPABASE_ANON_KEY: created"
-          elif [[ "$HTTP_STATUS" == "409" ]] || echo "$BODY" | grep -q "ENV_ALREADY_EXISTS"; then
+          elif echo "$BODY" | grep -qE "ENV_ALREADY_EXISTS|ENV_CONFLICT"; then
             echo "CRI_SUPABASE_ANON_KEY: already exists (skipping)"
           else
-            echo "CRI_SUPABASE_ANON_KEY: unexpected response"
+            echo "CRI_SUPABASE_ANON_KEY unexpected response: $BODY"
             exit 1
           fi
 
@@ -128,5 +128,5 @@ jobs:
           if missing:
               print('MISSING:', missing)
               exit(1)
-          print('VERIFIED: CRI_SUPABASE_URL and CRI_SUPABASE_ANON_KEY present')
+          print('VERIFIED: CRI_SUPABASE_URL and CRI_SUPABASE_ANON_KEY present in project', '$PROJECT_ID')
           "
