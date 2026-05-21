@@ -43,12 +43,10 @@ jobs:
           VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
           PROJECT_INPUT: ${{ inputs.vercel_project }}
         run: |
-          # If input looks like a project ID already (starts with prj_), use it directly
           if [[ "$PROJECT_INPUT" == prj_* ]]; then
             echo "project_id=$PROJECT_INPUT" >> "$GITHUB_OUTPUT"
             echo "Resolved: using provided project ID $PROJECT_INPUT"
           else
-            # Look up by name
             RESPONSE=$(curl -sf \
               "https://api.vercel.com/v9/projects/$PROJECT_INPUT?teamId=$VERCEL_TEAM_ID" \
               -H "Authorization: Bearer $VERCEL_TOKEN")
@@ -64,7 +62,7 @@ jobs:
           PROJECT_ID: ${{ steps.resolve.outputs.project_id }}
           CRI_SUPABASE_URL: ${{ secrets.CRI_SUPABASE_URL }}
         run: |
-          RESPONSE=$(curl -sf -X POST \
+          HTTP_STATUS=$(curl -s -o /tmp/cri_url_resp.json -w "%{http_code}" -X POST \
             "https://api.vercel.com/v10/projects/$PROJECT_ID/env?teamId=$VERCEL_TEAM_ID" \
             -H "Authorization: Bearer $VERCEL_TOKEN" \
             -H "Content-Type: application/json" \
@@ -73,13 +71,15 @@ jobs:
               \"value\": \"$CRI_SUPABASE_URL\",
               \"type\": \"encrypted\",
               \"target\": [\"production\", \"preview\", \"development\"]
-            }" 2>&1 || true)
-
-          # 409 = already exists, that's fine
-          if echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if d.get('key') or d.get('error',{}).get('code')=='ENV_ALREADY_EXISTS' else 1)" 2>/dev/null; then
-            echo "CRI_SUPABASE_URL: OK"
+            }")
+          BODY=$(cat /tmp/cri_url_resp.json)
+          echo "HTTP $HTTP_STATUS: $BODY"
+          if [[ "$HTTP_STATUS" == "200" || "$HTTP_STATUS" == "201" ]]; then
+            echo "CRI_SUPABASE_URL: created"
+          elif [[ "$HTTP_STATUS" == "409" ]] || echo "$BODY" | grep -q "ENV_ALREADY_EXISTS"; then
+            echo "CRI_SUPABASE_URL: already exists (skipping)"
           else
-            echo "CRI_SUPABASE_URL response: $RESPONSE"
+            echo "CRI_SUPABASE_URL: unexpected response"
             exit 1
           fi
 
@@ -90,7 +90,7 @@ jobs:
           PROJECT_ID: ${{ steps.resolve.outputs.project_id }}
           CRI_SUPABASE_ANON_KEY: ${{ secrets.CRI_SUPABASE_ANON_KEY }}
         run: |
-          RESPONSE=$(curl -sf -X POST \
+          HTTP_STATUS=$(curl -s -o /tmp/cri_key_resp.json -w "%{http_code}" -X POST \
             "https://api.vercel.com/v10/projects/$PROJECT_ID/env?teamId=$VERCEL_TEAM_ID" \
             -H "Authorization: Bearer $VERCEL_TOKEN" \
             -H "Content-Type: application/json" \
@@ -99,12 +99,15 @@ jobs:
               \"value\": \"$CRI_SUPABASE_ANON_KEY\",
               \"type\": \"encrypted\",
               \"target\": [\"production\", \"preview\", \"development\"]
-            }" 2>&1 || true)
-
-          if echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if d.get('key') or d.get('error',{}).get('code')=='ENV_ALREADY_EXISTS' else 1)" 2>/dev/null; then
-            echo "CRI_SUPABASE_ANON_KEY: OK"
+            }")
+          BODY=$(cat /tmp/cri_key_resp.json)
+          echo "HTTP $HTTP_STATUS: $BODY"
+          if [[ "$HTTP_STATUS" == "200" || "$HTTP_STATUS" == "201" ]]; then
+            echo "CRI_SUPABASE_ANON_KEY: created"
+          elif [[ "$HTTP_STATUS" == "409" ]] || echo "$BODY" | grep -q "ENV_ALREADY_EXISTS"; then
+            echo "CRI_SUPABASE_ANON_KEY: already exists (skipping)"
           else
-            echo "CRI_SUPABASE_ANON_KEY response: $RESPONSE"
+            echo "CRI_SUPABASE_ANON_KEY: unexpected response"
             exit 1
           fi
 
@@ -114,7 +117,7 @@ jobs:
           VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
           PROJECT_ID: ${{ steps.resolve.outputs.project_id }}
         run: |
-          ENVS=$(curl -sf \
+          curl -sf \
             "https://api.vercel.com/v10/projects/$PROJECT_ID/env?teamId=$VERCEL_TEAM_ID" \
             -H "Authorization: Bearer $VERCEL_TOKEN" | \
             python3 -c "
@@ -125,7 +128,5 @@ jobs:
           if missing:
               print('MISSING:', missing)
               exit(1)
-          else:
-              print('VERIFIED: both CRI vars present in project', '$PROJECT_ID')
-          ")
-          echo "$ENVS"
+          print('VERIFIED: CRI_SUPABASE_URL and CRI_SUPABASE_ANON_KEY present')
+          "
