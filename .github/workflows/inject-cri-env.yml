@@ -1,0 +1,131 @@
+# inject-cri-env.yml
+#
+# Injects CRI_SUPABASE_URL and CRI_SUPABASE_ANON_KEY into a Vercel project
+# as project-level environment variables (all environments).
+#
+# Run this whenever a new VoC project is created on Vercel so /registry
+# can connect to CrossoverResearchIntelligence without manual wiring.
+#
+# Usage — via GitHub UI:
+#   Actions → "Inject CRI env vars into Vercel project" → Run workflow
+#   Input: the Vercel project name (e.g. "aktos-voc") or project ID
+#
+# Usage — via API (e.g. from a Zapier webhook on new Vercel project):
+#   POST /repos/Crossover-Research/.github/actions/workflows/inject-cri-env.yml/dispatches
+#   Body: { "ref": "main", "inputs": { "vercel_project": "<name-or-id>" } }
+#
+# Required org secrets (set in Crossover-Research org Settings → Secrets):
+#   VERCEL_ACCESS_TOKEN   — Vercel personal access token
+#   VERCEL_TEAM_ID        — team_uj8PLmsWRhghCzV7fudrkS23
+#   CRI_SUPABASE_URL      — https://yvkbfmdugujhxerdopcm.supabase.co
+#   CRI_SUPABASE_ANON_KEY — JWT anon key for CrossoverResearchIntelligence
+
+name: Inject CRI env vars into Vercel project
+
+on:
+  workflow_dispatch:
+    inputs:
+      vercel_project:
+        description: "Vercel project name or ID (e.g. aktos-voc)"
+        required: true
+        type: string
+
+jobs:
+  inject:
+    name: Inject CRI_SUPABASE_URL + CRI_SUPABASE_ANON_KEY
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve project ID
+        id: resolve
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_ACCESS_TOKEN }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          PROJECT_INPUT: ${{ inputs.vercel_project }}
+        run: |
+          # If input looks like a project ID already (starts with prj_), use it directly
+          if [[ "$PROJECT_INPUT" == prj_* ]]; then
+            echo "project_id=$PROJECT_INPUT" >> "$GITHUB_OUTPUT"
+            echo "Resolved: using provided project ID $PROJECT_INPUT"
+          else
+            # Look up by name
+            RESPONSE=$(curl -sf \
+              "https://api.vercel.com/v9/projects/$PROJECT_INPUT?teamId=$VERCEL_TEAM_ID" \
+              -H "Authorization: Bearer $VERCEL_TOKEN")
+            PROJECT_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+            echo "project_id=$PROJECT_ID" >> "$GITHUB_OUTPUT"
+            echo "Resolved: $PROJECT_INPUT -> $PROJECT_ID"
+          fi
+
+      - name: Inject CRI_SUPABASE_URL
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_ACCESS_TOKEN }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          PROJECT_ID: ${{ steps.resolve.outputs.project_id }}
+          CRI_SUPABASE_URL: ${{ secrets.CRI_SUPABASE_URL }}
+        run: |
+          RESPONSE=$(curl -sf -X POST \
+            "https://api.vercel.com/v10/projects/$PROJECT_ID/env?teamId=$VERCEL_TEAM_ID" \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"key\": \"CRI_SUPABASE_URL\",
+              \"value\": \"$CRI_SUPABASE_URL\",
+              \"type\": \"encrypted\",
+              \"target\": [\"production\", \"preview\", \"development\"]
+            }" 2>&1 || true)
+
+          # 409 = already exists, that's fine
+          if echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if d.get('key') or d.get('error',{}).get('code')=='ENV_ALREADY_EXISTS' else 1)" 2>/dev/null; then
+            echo "CRI_SUPABASE_URL: OK"
+          else
+            echo "CRI_SUPABASE_URL response: $RESPONSE"
+            exit 1
+          fi
+
+      - name: Inject CRI_SUPABASE_ANON_KEY
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_ACCESS_TOKEN }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          PROJECT_ID: ${{ steps.resolve.outputs.project_id }}
+          CRI_SUPABASE_ANON_KEY: ${{ secrets.CRI_SUPABASE_ANON_KEY }}
+        run: |
+          RESPONSE=$(curl -sf -X POST \
+            "https://api.vercel.com/v10/projects/$PROJECT_ID/env?teamId=$VERCEL_TEAM_ID" \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"key\": \"CRI_SUPABASE_ANON_KEY\",
+              \"value\": \"$CRI_SUPABASE_ANON_KEY\",
+              \"type\": \"encrypted\",
+              \"target\": [\"production\", \"preview\", \"development\"]
+            }" 2>&1 || true)
+
+          if echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if d.get('key') or d.get('error',{}).get('code')=='ENV_ALREADY_EXISTS' else 1)" 2>/dev/null; then
+            echo "CRI_SUPABASE_ANON_KEY: OK"
+          else
+            echo "CRI_SUPABASE_ANON_KEY response: $RESPONSE"
+            exit 1
+          fi
+
+      - name: Verify injection
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_ACCESS_TOKEN }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          PROJECT_ID: ${{ steps.resolve.outputs.project_id }}
+        run: |
+          ENVS=$(curl -sf \
+            "https://api.vercel.com/v10/projects/$PROJECT_ID/env?teamId=$VERCEL_TEAM_ID" \
+            -H "Authorization: Bearer $VERCEL_TOKEN" | \
+            python3 -c "
+          import sys, json
+          envs = json.load(sys.stdin).get('envs', [])
+          keys = [e['key'] for e in envs]
+          missing = [k for k in ['CRI_SUPABASE_URL', 'CRI_SUPABASE_ANON_KEY'] if k not in keys]
+          if missing:
+              print('MISSING:', missing)
+              exit(1)
+          else:
+              print('VERIFIED: both CRI vars present in project', '$PROJECT_ID')
+          ")
+          echo "$ENVS"
