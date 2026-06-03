@@ -1,0 +1,29 @@
+# ============================================================
+# EXAMPLE starter CI — copy into a repo as .github/workflows/ci.yml.
+# Reference only; kept outside .github/workflows/ so GitHub does not
+# execute it against this meta-repo (which has no TS/Python project).
+# ============================================================
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typescript:
+    uses: Crossover-Research/.github/.github/workflows/ts-ci.yml@main
+
+  python:
+    uses: Crossover-Research/.github/.github/workflows/python-ci.yml@main
+
+  security:
+    uses: Crossover-Research/.github/.github/workflows/security.yml@main
+
+  auto-fix:
+    needs: [typescript, python]
+    if: failure()
+    uses: Crossover-Research/.github/.github/workflows/claude-auto-fix.yml@main
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
