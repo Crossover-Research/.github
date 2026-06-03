@@ -1,6 +1,7 @@
 # ============================================================
-# EXAMPLE: Copy this into any repo as .github/workflows/ci.yml
-# Delete this file from the .github org repo after reference
+# EXAMPLE starter CI — copy into a repo as .github/workflows/ci.yml.
+# Reference only; kept outside .github/workflows/ so GitHub does not
+# execute it against this meta-repo (which has no TS/Python project).
 # ============================================================
 name: CI
 
