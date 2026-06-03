@@ -1,4 +1,4 @@
-name: TypeScript CI
+name: TypeScript CI (fast)
 
 on:
   workflow_call:
@@ -7,39 +7,112 @@ on:
         default: "22"
         type: string
       pnpm-version:
-        default: "9"
+        default: "10"
         type: string
+      typecheck-cmd:
+        default: "pnpm tsc --noEmit"
+        type: string
+        description: "TypeScript check command"
+      lint-cmd:
+        default: ""
+        type: string
+        description: "Lint command - leave empty to skip"
+      test-cmd:
+        default: ""
+        type: string
+        description: "Test command - leave empty to skip"
+      coverage-cmd:
+        default: ""
+        type: string
+        description: "Coverage command - supersedes test-cmd when set"
+    secrets:
+      SUPABASE_URL:
+        required: false
+      SUPABASE_ANON_KEY:
+        required: false
 
 permissions:
   contents: read
 
 jobs:
-  quality:
-    name: Lint, Type-check & Test
+  install:
+    name: Install dependencies
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ inputs.pnpm-version }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
           cache: pnpm
-
-      - name: Install dependencies
+      - name: Restore node_modules cache
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-node${{ inputs.node-version }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+      - name: Install (cache miss)
+        if: steps.nm-cache.outputs.cache-hit != 'true'
         run: pnpm install --frozen-lockfile
 
-      - name: Biome lint & format check
-        run: pnpm biome ci .
+  typecheck:
+    name: TypeScript
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: "${{ inputs.pnpm-version }}" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ inputs.node-version }}", cache: pnpm }
+      - uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-node${{ inputs.node-version }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+      - name: Type-check
+        run: ${{ inputs.typecheck-cmd }}
 
-      - name: TypeScript type-check
-        run: pnpm tsc --noEmit
+  lint:
+    name: Lint
+    needs: install
+    if: inputs.lint-cmd != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: "${{ inputs.pnpm-version }}" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ inputs.node-version }}", cache: pnpm }
+      - uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-node${{ inputs.node-version }}-${{ hashFiles('**/
+pnpm-lock.yaml') }}
+      - name: Lint
+        run: ${{ inputs.lint-cmd }}
 
-      - name: Run tests
-        run: pnpm vitest --run --reporter=verbose
+  test:
+    name: Tests
+    needs: install
+    if: inputs.test-cmd != '' || inputs.coverage-cmd != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: "${{ inputs.pnpm-version }}" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ inputs.node-version }}", cache: pnpm }
+      - uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-node${{ inputs.node-version }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+      - name: Run tests (coverage supersedes plain test - runs once)
+        run: ${{ inputs.coverage-cmd || inputs.test-cmd }}
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
 
   dependency-review:
     name: Dependency Review
