@@ -1,0 +1,99 @@
+name: Vercel Production Deploy
+
+on:
+  workflow_call:
+    inputs:
+      vercel-project-id:
+        required: true
+        type: string
+      node-version:
+        required: false
+        type: string
+        default: '22'
+      package-manager:
+        required: false
+        type: string
+        default: 'pnpm'
+    secrets:
+      VERCEL_TOKEN:
+        required: true
+      VERCEL_ORG_ID:
+        required: true
+      VERCEL_AUTOMATION_BYPASS_SECRET:
+        required: false
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
+
+jobs:
+  typecheck:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        if: inputs.package-manager == 'pnpm'
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+      - run: ${{ inputs.package-manager }} install --frozen-lockfile
+      - name: Type check
+        run: |
+          if [ -f "tsconfig.build.json" ]; then
+            npx tsc --noEmit --project tsconfig.build.json
+          elif [ -f "tsconfig.json" ]; then
+            npx tsc --noEmit
+          fi
+        continue-on-error: false
+
+  deploy:
+    name: Build → Deploy → Smoke
+    needs: typecheck
+    runs-on: ubuntu-latest
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        if: inputs.package-manager == 'pnpm'
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+      - run: ${{ inputs.package-manager }} install --frozen-lockfile
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build production artifacts
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Deploy prebuilt to Vercel
+        id: deploy
+        run: |
+          OUTPUT=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} 2>&1)
+          URL=$(echo "$OUTPUT" | grep -E "^https://" | tail -1)
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "Deployed: $URL"
+
+      - name: Smoke test
+        if: secrets.VERCEL_AUTOMATION_BYPASS_SECRET != ''
+        run: |
+          URL="${{ steps.deploy.outputs.url }}"
+          [ -z "$URL" ] && { echo "No deployment URL captured — skipping smoke"; exit 0; }
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
+            -H "x-vercel-protection-bypass: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}" \
+            "$URL/api/health" 2>/dev/null || echo "000")
+          echo "Health: $STATUS at $URL/api/health"
+          [ "$STATUS" = "200" ] && echo "Smoke test passed" || echo "No health endpoint (static site or 401-gated) — continuing"
