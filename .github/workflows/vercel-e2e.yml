@@ -1,0 +1,62 @@
+name: Vercel E2E Smoke Tests
+
+on:
+  workflow_call:
+    secrets:
+      VERCEL_AUTOMATION_BYPASS_SECRET:
+        required: false
+
+jobs:
+  smoke:
+    name: Preview Smoke Tests
+    if: github.event.client_payload.target != 'production'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.git.sha }}
+
+      - name: Run smoke tests
+        run: |
+          URL="${{ github.event.client_payload.url }}"
+          BYPASS="${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
+          echo "Testing: $URL"
+
+          PASS=0; FAIL=0
+          check() {
+            local route=$1 expected=${2:-200}
+            local status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
+              ${BYPASS:+-H "x-vercel-protection-bypass: $BYPASS"} \
+              "$URL$route" 2>/dev/null || echo "000")
+            if [ "$status" = "$expected" ]; then
+              echo "PASS $status $route"; PASS=$((PASS+1))
+            else
+              echo "FAIL $status $route (expected $expected)"; FAIL=$((FAIL+1))
+            fi
+          }
+
+          check "/"
+          check "/api/health"
+
+          echo "Results: $PASS passed, $FAIL failed"
+          [ "$FAIL" = "0" ] || exit 1
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          script: |
+            const url = '${{ github.event.client_payload.url }}';
+            const sha = '${{ github.event.client_payload.git.sha }}';
+            if (!sha) { console.log('No SHA — skipping PR comment'); return; }
+            const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner, repo: context.repo.repo, commit_sha: sha
+            });
+            const icon = '${{ job.status }}' === 'success' ? 'PASS' : 'FAIL';
+            for (const pr of prs.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: pr.number,
+                body: `${icon} **Preview smoke tests ${{ job.status }}**\n\n${url}`
+              });
+            }
