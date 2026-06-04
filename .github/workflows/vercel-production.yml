@@ -3,9 +3,6 @@ name: Vercel Production Deploy
 on:
   workflow_call:
     inputs:
-      vercel-project-id:
-        required: true
-        type: string
       node-version:
         required: false
         type: string
@@ -14,6 +11,10 @@ on:
         required: false
         type: string
         default: 'pnpm'
+      production-branch:
+        required: false
+        type: string
+        default: 'main'
     secrets:
       VERCEL_TOKEN:
         required: true
@@ -22,9 +23,10 @@ on:
       VERCEL_AUTOMATION_BYPASS_SECRET:
         required: false
 
+# NO VERCEL_PROJECT_ID needed — vercel CLI auto-detects from git remote
+
 env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-  VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
 
 jobs:
   typecheck:
@@ -40,7 +42,7 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ inputs.package-manager }}
-      - run: ${{ inputs.package-manager }} install --frozen-lockfile
+      - run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
       - name: Type check
         run: |
           if [ -f "tsconfig.build.json" ]; then
@@ -66,12 +68,12 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ inputs.package-manager }}
-      - run: ${{ inputs.package-manager }} install --frozen-lockfile
+      - run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
-      - name: Pull Vercel environment
+      - name: Pull Vercel environment (auto-detects project from git remote)
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Build production artifacts
@@ -85,7 +87,7 @@ jobs:
           OUTPUT=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} 2>&1)
           URL=$(echo "$OUTPUT" | grep -E "^https://" | tail -1)
           echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "Deployed: $URL"
+          echo "✅ Deployed: $URL"
 
       - name: Smoke test
         env:
@@ -97,5 +99,6 @@ jobs:
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
             -H "x-vercel-protection-bypass: $BYPASS_SECRET" \
             "$URL/api/health" 2>/dev/null || echo "000")
-          echo "Health: $STATUS at $URL/api/health"
+          echo "Health check: HTTP $STATUS at $URL"
           [ "$STATUS" = "200" ] && echo "Smoke test passed" || echo "No health endpoint (static site or 401-gated) — continuing"
+
