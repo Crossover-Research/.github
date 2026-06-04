@@ -88,12 +88,14 @@ jobs:
           echo "Deployed: $URL"
 
       - name: Smoke test
-        if: secrets.VERCEL_AUTOMATION_BYPASS_SECRET != ''
+        env:
+          BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        if: env.BYPASS_SECRET != ''
         run: |
           URL="${{ steps.deploy.outputs.url }}"
           [ -z "$URL" ] && { echo "No deployment URL captured — skipping smoke"; exit 0; }
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
-            -H "x-vercel-protection-bypass: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}" \
+            -H "x-vercel-protection-bypass: $BYPASS_SECRET" \
             "$URL/api/health" 2>/dev/null || echo "000")
           echo "Health: $STATUS at $URL/api/health"
           [ "$STATUS" = "200" ] && echo "Smoke test passed" || echo "No health endpoint (static site or 401-gated) — continuing"
