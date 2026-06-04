@@ -23,7 +23,8 @@ on:
       VERCEL_AUTOMATION_BYPASS_SECRET:
         required: false
 
-# NO VERCEL_PROJECT_ID needed — vercel CLI auto-detects from git remote
+# VERCEL_PROJECT_ID is read from .vercel/project.json at runtime (step below)
+# VERCEL_ORG_ID must be set as env for CLI to pick up the team
 
 env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -45,9 +46,9 @@ jobs:
       - run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
       - name: Type check
         run: |
-          if [ -f "tsconfig.build.json" ]; then
+          if [ -f tsconfig.build.json ]; then
             npx tsc --noEmit --project tsconfig.build.json
-          elif [ -f "tsconfig.json" ]; then
+          elif [ -f tsconfig.json ]; then
             npx tsc --noEmit
           fi
         continue-on-error: false
@@ -73,7 +74,13 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
-      - name: Pull Vercel environment (auto-detects project from git remote)
+      - name: Export VERCEL_PROJECT_ID from .vercel/project.json
+        run: |
+          PROJECT_ID=$(python3 -c "import json; print(json.load(open('.vercel/project.json'))['projectId'])")
+          echo "VERCEL_PROJECT_ID=$PROJECT_ID" >> $GITHUB_ENV
+          echo "Loaded VERCEL_PROJECT_ID from .vercel/project.json"
+
+      - name: Pull Vercel environment
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Build production artifacts
@@ -87,7 +94,7 @@ jobs:
           OUTPUT=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} 2>&1)
           URL=$(echo "$OUTPUT" | grep -E "^https://" | tail -1)
           echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "✅ Deployed: $URL"
+          echo "Deployed: $URL"
 
       - name: Smoke test
         env:
@@ -95,10 +102,7 @@ jobs:
         if: env.BYPASS_SECRET != ''
         run: |
           URL="${{ steps.deploy.outputs.url }}"
-          [ -z "$URL" ] && { echo "No deployment URL captured — skipping smoke"; exit 0; }
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
-            -H "x-vercel-protection-bypass: $BYPASS_SECRET" \
-            "$URL/api/health" 2>/dev/null || echo "000")
+          [ -z "$URL" ] && { echo "No deployment URL captured - skipping smoke"; exit 0; }
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20             -H "x-vercel-protection-bypass: $BYPASS_SECRET"             "$URL/api/health" 2>/dev/null || echo "000")
           echo "Health check: HTTP $STATUS at $URL"
-          [ "$STATUS" = "200" ] && echo "Smoke test passed" || echo "No health endpoint (static site or 401-gated) — continuing"
-
+          [ "$STATUS" = "200" ] && echo "Smoke test passed" || echo "No health endpoint (static site or 401-gated) - continuing"
