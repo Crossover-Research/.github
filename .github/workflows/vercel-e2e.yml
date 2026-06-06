@@ -29,15 +29,25 @@ jobs:
           echo "Testing: $DEPLOY_URL"
 
           PASS=0; FAIL=0
+          # check <route> [expected]
+          # Without an expected code, any 2xx or 3xx is a pass so intentional
+          # redirects (e.g. a root that 307s) don't fail the smoke test, while
+          # 4xx/5xx/000 still fail. Pass an explicit code to assert it exactly.
           check() {
-            local route=$1 expected=${2:-200}
+            local route=$1 expected=${2:-}
             local status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
               ${BYPASS_SECRET:+-H "x-vercel-protection-bypass: $BYPASS_SECRET"} \
               "$DEPLOY_URL$route" 2>/dev/null || echo "000")
-            if [ "$status" = "$expected" ]; then
+            local ok=0
+            if [ -n "$expected" ]; then
+              [ "$status" = "$expected" ] && ok=1
+            else
+              case "$status" in 2??|3??) ok=1 ;; esac
+            fi
+            if [ "$ok" = "1" ]; then
               echo "PASS $status $route"; PASS=$((PASS+1))
             else
-              echo "FAIL $status $route (expected $expected)"; FAIL=$((FAIL+1))
+              echo "FAIL $status $route (expected ${expected:-2xx/3xx})"; FAIL=$((FAIL+1))
             fi
           }
 
