@@ -1,0 +1,92 @@
+name: Crossover App Token
+description: >-
+  Mint a short-lived GitHub App installation token for the Crossover App so that
+  mutating Git/GitHub operations run as the org App rather than the default
+  GITHUB_TOKEN. Falls back to a provided PAT, then to GITHUB_TOKEN, emitting a
+  warning when the App path is not used.
+
+inputs:
+  app-id:
+    description: >-
+      Crossover App ID. Pass secrets.CROSSOVER_APP_ID. Leave empty to fall back.
+    required: false
+    default: ""
+  private-key:
+    description: >-
+      Crossover App private key (PEM). Pass secrets.CROSSOVER_APP_PRIVATE_KEY.
+      Leave empty to fall back.
+    required: false
+    default: ""
+  fallback-token:
+    description: >-
+      Optional PAT to use when the App credentials are absent. Pass a PAT secret
+      (e.g. secrets.CROSSOVER_PAT). If empty, the action falls back to the
+      job's GITHUB_TOKEN.
+    required: false
+    default: ""
+  github-token:
+    description: >-
+      The job's GITHUB_TOKEN, used as the last-resort fallback. Pass
+      ${{ github.token }} (the default).
+    required: false
+    default: ${{ github.token }}
+  owner:
+    description: >-
+      Owner the installation token should be scoped to. Defaults to the current
+      repository owner.
+    required: false
+    default: ""
+  repositories:
+    description: >-
+      Newline- or comma-separated list of repositories the token may access.
+      Defaults to the current repository when owner is the default.
+    required: false
+    default: ""
+
+outputs:
+  token:
+    description: >-
+      The token to use for authenticated Git/GitHub operations. An App
+      installation token when App credentials are present, otherwise the
+      fallback PAT or GITHUB_TOKEN.
+    value: ${{ steps.select.outputs.token }}
+  source:
+    description: "Which credential was selected: app | pat | github_token."
+    value: ${{ steps.select.outputs.source }}
+
+runs:
+  using: composite
+  steps:
+    - name: Mint Crossover App token
+      id: app-token
+      if: inputs.app-id != '' && inputs.private-key != ''
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ inputs.owner }}
+        repositories: ${{ inputs.repositories }}
+
+    - name: Select token and warn on fallback
+      id: select
+      shell: bash
+      env:
+        APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        FALLBACK_TOKEN: ${{ inputs.fallback-token }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        if [ -n "$APP_TOKEN" ]; then
+          echo "::add-mask::$APP_TOKEN"
+          echo "Using Crossover App installation token."
+          echo "source=app" >> "$GITHUB_OUTPUT"
+          printf 'token=%s\n' "$APP_TOKEN" >> "$GITHUB_OUTPUT"
+        elif [ -n "$FALLBACK_TOKEN" ]; then
+          echo "::add-mask::$FALLBACK_TOKEN"
+          echo "::warning title=Crossover App token unavailable::CROSSOVER_APP_ID / CROSSOVER_APP_PRIVATE_KEY not provided — falling back to the supplied PAT. Configure the Crossover App org secrets to remove this warning."
+          echo "source=pat" >> "$GITHUB_OUTPUT"
+          printf 'token=%s\n' "$FALLBACK_TOKEN" >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning title=Crossover App token unavailable::CROSSOVER_APP_ID / CROSSOVER_APP_PRIVATE_KEY and no PAT provided — falling back to the default GITHUB_TOKEN. Mutating operations will run as github-actions[bot] and cannot trigger downstream workflows. Configure the Crossover App org secrets to remove this warning."
+          echo "source=github_token" >> "$GITHUB_OUTPUT"
+          printf 'token=%s\n' "$GH_TOKEN" >> "$GITHUB_OUTPUT"
+        fi

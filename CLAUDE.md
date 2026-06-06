@@ -64,3 +64,19 @@
 4. If a dependency error, check `pnpm-lock.yaml` is committed and up to date
 5. Never suppress TypeScript errors with `@ts-ignore` — use `@ts-expect-error` with a comment explaining why
 6. Run `pnpm tsc --noEmit` locally before pushing
+
+### GitHub Actions — Crossover App token
+- Any workflow step that performs a **mutating** Git/GitHub operation (pushing
+  commits, creating/editing PRs or issues, posting comments, creating releases,
+  `github-script` write calls, commit-and-push actions) must authenticate with a
+  token minted by the shared `crossover-app-token` composite action
+  (`.github/actions/crossover-app-token`), **not** the default `GITHUB_TOKEN` or
+  an inline PAT.
+- The action mints a Crossover App installation token from the org secrets
+  `CROSSOVER_APP_ID` / `CROSSOVER_APP_PRIVATE_KEY`, and only falls back to a PAT
+  or `GITHUB_TOKEN` (with a warning) when those are unavailable.
+- Caller workflows must forward `CROSSOVER_APP_ID` and `CROSSOVER_APP_PRIVATE_KEY`
+  as `secrets:` to reusable workflows (org secrets are not inherited automatically).
+- The `App Token Guard` workflow (`.github/workflows/app-token-guard.yml`) enforces
+  this on every PR that touches workflows. A provably-safe write may opt out with a
+  `# app-token-guard: allow` marker on the step `name`.

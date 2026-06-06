@@ -5,6 +5,10 @@ on:
     secrets:
       VERCEL_AUTOMATION_BYPASS_SECRET:
         required: false
+      CROSSOVER_APP_ID:
+        required: false
+      CROSSOVER_APP_PRIVATE_KEY:
+        required: false
 
 permissions:
   contents: read
@@ -17,6 +21,17 @@ jobs:
     if: github.event.client_payload.target != 'production'
     runs-on: ubuntu-latest
     steps:
+      # Mint a Crossover App token so the PR comment below is posted as the org
+      # App, falling back to GITHUB_TOKEN with a warning when the App secrets are
+      # absent. See .github/actions/crossover-app-token.
+      - name: Crossover App token
+        id: token
+        uses: Crossover-Research/.github/.github/actions/crossover-app-token@main
+        with:
+          app-id: ${{ secrets.CROSSOVER_APP_ID }}
+          private-key: ${{ secrets.CROSSOVER_APP_PRIVATE_KEY }}
+          github-token: ${{ github.token }}
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.client_payload.git.sha }}
@@ -64,6 +79,7 @@ jobs:
           DEPLOY_URL: ${{ github.event.client_payload.url }}
           COMMIT_SHA: ${{ github.event.client_payload.git.sha }}
         with:
+          github-token: ${{ steps.token.outputs.token }}
           script: |
             const url = process.env.DEPLOY_URL;
             const sha = process.env.COMMIT_SHA;
