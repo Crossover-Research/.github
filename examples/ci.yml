@@ -27,3 +27,8 @@ jobs:
     uses: Crossover-Research/.github/.github/workflows/claude-auto-fix.yml@main
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # Org App credentials so the auto-fix commit is authored by the Crossover
+      # App and can trigger downstream CI. Omit to fall back to GITHUB_TOKEN
+      # (a warning is emitted and the push will not re-trigger CI).
+      CROSSOVER_APP_ID: ${{ secrets.CROSSOVER_APP_ID }}
+      CROSSOVER_APP_PRIVATE_KEY: ${{ secrets.CROSSOVER_APP_PRIVATE_KEY }}

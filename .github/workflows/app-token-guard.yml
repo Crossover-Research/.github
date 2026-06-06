@@ -1,0 +1,35 @@
+name: App Token Guard
+
+# Fails when a reusable workflow performs a mutating GitHub/Git operation without
+# routing its token through the crossover-app-token composite action. Runs on PRs
+# that touch workflows or the guard itself, and can be reused by other repos via
+# workflow_call.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/crossover-app-token/**"
+      - ".github/scripts/check_app_token_usage.py"
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Mutating-op token guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: python -m pip install --upgrade pip pyyaml
+
+      - name: Check App token usage
+        run: python3 .github/scripts/check_app_token_usage.py

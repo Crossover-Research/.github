@@ -5,6 +5,10 @@ on:
     secrets:
       ANTHROPIC_API_KEY:
         required: true
+      CROSSOVER_APP_ID:
+        required: false
+      CROSSOVER_APP_PRIVATE_KEY:
+        required: false
 
 permissions:
   contents: write
@@ -17,15 +21,29 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.workflow_run.conclusion == 'failure'
     steps:
+      # Mint a Crossover App token so the commit/push below is authored by the
+      # org App (and can trigger downstream CI), falling back to GITHUB_TOKEN
+      # with a warning when the App secrets are absent. See
+      # .github/actions/crossover-app-token.
+      - name: Crossover App token
+        id: token
+        uses: Crossover-Research/.github/.github/actions/crossover-app-token@main
+        with:
+          app-id: ${{ secrets.CROSSOVER_APP_ID }}
+          private-key: ${{ secrets.CROSSOVER_APP_PRIVATE_KEY }}
+          github-token: ${{ github.token }}
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
+          token: ${{ steps.token.outputs.token }}
 
       - name: Download failure logs
         uses: actions/github-script@v7
         id: logs
         with:
+          github-token: ${{ steps.token.outputs.token }}
           script: |
             const run = await github.rest.actions.listJobsForWorkflowRun({
               owner: context.repo.owner,
@@ -49,6 +67,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ steps.token.outputs.token }}
           prompt: |
             CI failed on this branch. The failure logs are in failure-logs.txt.
 
