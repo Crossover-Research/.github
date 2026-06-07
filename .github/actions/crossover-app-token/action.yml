@@ -26,8 +26,9 @@ inputs:
     default: ""
   github-token:
     description: >-
-      The job's GITHUB_TOKEN, used as the last-resort fallback. Pass
-      ${{ github.token }} explicitly in the calling workflow step.
+      The job GITHUB_TOKEN used as last-resort fallback. Must be passed
+      explicitly by the caller (composite actions cannot reference github context
+      in input defaults).
     required: false
     default: ""
   owner:
