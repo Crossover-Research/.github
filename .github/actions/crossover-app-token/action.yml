@@ -27,9 +27,9 @@ inputs:
   github-token:
     description: >-
       The job's GITHUB_TOKEN, used as the last-resort fallback. Pass
-      ${{ github.token }} (the default).
+      ${{ github.token }} explicitly in the calling workflow step.
     required: false
-    default: ${{ github.token }}
+    default: ""
   owner:
     description: >-
       Owner the installation token should be scoped to. Defaults to the current
