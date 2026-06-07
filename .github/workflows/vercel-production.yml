@@ -90,11 +90,48 @@ jobs:
 
       - name: Deploy prebuilt to Vercel
         id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          OUTPUT=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} 2>&1)
-          URL=$(echo "$OUTPUT" | grep -E "^https://" | tail -1)
-          echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "Deployed: $URL"
+          # Run the deploy with `set +e` so a nonzero exit from the Vercel CLI
+          # does not abort the step under `bash -e` before we get a chance to
+          # surface the captured output. Previously the failure produced an
+          # opaque red check because $OUTPUT was never printed.
+          set +e
+          OUTPUT=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN" 2>&1)
+          CODE=$?
+          set -e
+
+          # Redact the token from anything we print, in case the CLI echoes it.
+          SANITIZED=$(printf '%s\n' "$OUTPUT" | sed "s/${VERCEL_TOKEN}/***/g")
+          echo "$SANITIZED"
+
+          # A Vercel deployment URL appears on its own line. Match anywhere on
+          # the line (not just at the start) so trailing CLI annotations or
+          # leading whitespace don't hide it, and take the last one.
+          URL=$(printf '%s\n' "$OUTPUT" | grep -oE 'https://[A-Za-z0-9._-]+\.vercel\.app[^[:space:]]*' | tail -1)
+          if [ -n "$URL" ]; then
+            echo "url=$URL" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$CODE" -eq 0 ]; then
+            echo "Deployed: ${URL:-<no URL parsed>}"
+            exit 0
+          fi
+
+          # Nonzero exit. Vercel sometimes reports a no-op when the prebuilt
+          # artifact for this commit is already deployed; treat that as success
+          # only when it also handed us a deployment URL. Anything else is a
+          # real failure that must stay red.
+          if printf '%s\n' "$SANITIZED" | grep -qiE 'already (built|deployed)|no[- ]?op|nothing to deploy|deployment .* already exists' \
+             && [ -n "$URL" ]; then
+            echo "::warning::Vercel reported an already-deployed/no-op state for this commit; using existing deployment URL $URL"
+            echo "Deployed: $URL"
+            exit 0
+          fi
+
+          echo "::error::vercel deploy failed (exit $CODE). See sanitized output above."
+          exit "$CODE"
 
       - name: Smoke test
         env:
