@@ -1,0 +1,7 @@
+{
+  "name": "Crossover Research CI & Deploy",
+  "description": "Standard pipeline: TypeCheck → Lint → Tests → Vercel production deploy. Calls org-level reusable workflows.",
+  "iconName": "octicon-rocket",
+  "categories": ["CI", "Deployment", "TypeScript"],
+  "filePatterns": ["package.json$", "tsconfig.json$"]
+}

@@ -1,0 +1,36 @@
+# ============================================================
+# Crossover Research — Standard CI & Deploy
+# Surfaced in GitHub's "New workflow" UI for all org repos.
+# Calls the org-level reusable workflows from Crossover-Research/.github.
+# ============================================================
+name: CI & Deploy
+
+on:
+  push:
+    branches: [$default-branch]
+  pull_request:
+    branches: [$default-branch]
+
+jobs:
+  ci:
+    uses: Crossover-Research/.github/.github/workflows/ts-ci.yml@main
+    with:
+      node-version: '24'
+      pnpm-version: '9.15.4'
+      lint-cmd: 'pnpm lint'
+    secrets:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
+  deploy:
+    if: github.ref == 'refs/heads/$default-branch' && github.event_name == 'push'
+    needs: ci
+    uses: Crossover-Research/.github/.github/workflows/vercel-production.yml@main
+    with:
+      node-version: '24'
+      package-manager: 'pnpm'
+      production-branch: '$default-branch'
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
