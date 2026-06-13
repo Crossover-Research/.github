@@ -46,7 +46,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          cache: pnpm
       - name: Restore node_modules cache
         id: nm-cache
         uses: actions/cache@v4
@@ -66,7 +65,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         with: { version: "${{ inputs.pnpm-version }}" }
       - uses: actions/setup-node@v4
-        with: { node-version: "${{ inputs.node-version }}", cache: pnpm }
+        with: { node-version: "${{ inputs.node-version }}" }
       - uses: actions/cache@v4
         with:
           path: node_modules
@@ -84,7 +83,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         with: { version: "${{ inputs.pnpm-version }}" }
       - uses: actions/setup-node@v4
-        with: { node-version: "${{ inputs.node-version }}", cache: pnpm }
+        with: { node-version: "${{ inputs.node-version }}" }
       - uses: actions/cache@v4
         with:
           path: node_modules
@@ -102,7 +101,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         with: { version: "${{ inputs.pnpm-version }}" }
       - uses: actions/setup-node@v4
-        with: { node-version: "${{ inputs.node-version }}", cache: pnpm }
+        with: { node-version: "${{ inputs.node-version }}" }
       - uses: actions/cache@v4
         with:
           path: node_modules
